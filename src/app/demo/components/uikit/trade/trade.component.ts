@@ -5,19 +5,40 @@ import { Product } from 'src/app/demo/api/product';
 import { ProductService } from 'src/app/demo/service/product.service';
 import { Table } from 'primeng/table';
 import { MessageService, ConfirmationService } from 'primeng/api';
+import { CsvFileDataService } from 'src/app/demo/serviceTrade/csv-file-data.service';
+import { TradeData, TradeDataDaily } from 'src/app/demo/api/tradeData';
+import { HttpClient } from '@angular/common/http';
+import * as FileSaver from 'file-saver';
 
 interface expandedRows {
     [key: string]: boolean;
 }
 
+interface Column {
+    field: string;
+    header: string;
+    customExportHeader?: string;
+}
+
+interface ExportColumn {
+    title: string;
+    dataKey: string;
+}
+
 @Component({
-    templateUrl: './tabledemo.component.html',
+    templateUrl: './trade.component.html',
     providers: [MessageService, ConfirmationService]
 })
-export class TableDemoComponent implements OnInit {
 
+//TradeComponent
+export class TradeComponent implements OnInit {
+    cols!: Column[];
+
+    exportColumns!: ExportColumn[];
+    uploadedFiles: any[] = [];
+    dataSource: TradeData[] = [];
     customers1: Customer[] = [];
-
+    tradeDataDaily: TradeDataDaily[]=[];
     customers2: Customer[] = [];
 
     customers3: Customer[] = [];
@@ -46,10 +67,10 @@ export class TableDemoComponent implements OnInit {
 
     @ViewChild('filter') filter!: ElementRef;
 
-    constructor(private customerService: CustomerService, private productService: ProductService) { }
+    constructor(private customerService: CustomerService, private productService: ProductService, private messageService: MessageService, private csvFileDataService: CsvFileDataService, private httpclient: HttpClient) { }
 
     ngOnInit() {
-        
+        this.geFileNames();
         this.customerService.getCustomersLarge().then(customers => {
             this.customers1 = customers;
             this.loading = false;
@@ -135,5 +156,69 @@ export class TableDemoComponent implements OnInit {
         table.clear();
         this.filter.nativeElement.value = '';
     }
+
+    ///////////////////////////
+    onUpload(event: any) {
+        const formdata = new FormData();
+        formdata.append('file', event.target.files[0]);
+        // 'https://localhost:7010/api/getExistingTradeData?filename=21-2-2024'
+        //  'https://localhost:7010/api/FileData' 
+        //https://localhost:7010/api/FileData
+        this.httpclient.post('https://localhost:8082/api/FileData', formdata).subscribe(result => {
+            this.dataSource = result as TradeData[];
+            console.log(this.dataSource);
+        this.geFileNames();
+        });
+        
+        this.messageService.add({ severity: 'info', summary: 'Success', detail: 'File Uploaded' });
+    }
+  geFileNames()
+  {
+    this.httpclient.get('https://localhost:8082/api/FileData').subscribe(result => {
+        this.tradeDataDaily = result as TradeDataDaily[];
+        console.log(this.tradeDataDaily);
+    });
+  
+  }
+    exportPdf() {
+        var exportcol: ExportColumn;
+        exportcol.dataKey = "avgBuyValue";
+        exportcol.title = "Ev Bu Value"
+        this.exportColumns.push(exportcol);
+        import('jspdf').then((jsPDF) => {
+            import('jspdf-autotable').then((x) => {
+                const doc = new jsPDF.default('p', 'px', 'a4');
+                (doc as any).autoTable(this.exportColumns, this.dataSource);
+                doc.save('products.pdf');
+            });
+        });
+    }
+
+    exportExcel() {
+        import('xlsx').then((xlsx) => {
+            const worksheet = xlsx.utils.json_to_sheet(this.dataSource);
+            const workbook = { Sheets: { data: worksheet }, SheetNames: ['data'] };
+            const excelBuffer: any = xlsx.write(workbook, { bookType: 'xlsx', type: 'array' });
+            this.saveAsExcelFile(excelBuffer, 'products');
+        });
+    }
+
+    saveAsExcelFile(buffer: any, fileName: string): void {
+        let EXCEL_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8';
+        let EXCEL_EXTENSION = '.xlsx';
+        const data: Blob = new Blob([buffer], {
+            type: EXCEL_TYPE
+        });
+        FileSaver.saveAs(data, fileName + '_export_' + new Date().getTime() + EXCEL_EXTENSION);
+    }
+    showExistingCsvData(csvFileName:string)
+    {
+        this.httpclient.get('https://localhost:8082/api/getExistingTradeData?filename='+csvFileName).subscribe(result => {
+            this.dataSource = result as TradeData[];
+            console.log(this.dataSource);
+        });
+    }
+
     
+
 }

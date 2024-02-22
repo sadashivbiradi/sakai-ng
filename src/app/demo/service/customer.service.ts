@@ -4,7 +4,6 @@ import { Customer } from '../api/customer';
 
 @Injectable()
 export class CustomerService {
-
     constructor(private http: HttpClient) { }
 
     getCustomersSmall() {
